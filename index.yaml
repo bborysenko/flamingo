@@ -1,0 +1,23 @@
+apiVersion: v1
+entries:
+  fleetdm:
+  - apiVersion: v2
+    appVersion: v4.80.1
+    created: "2026-02-19T23:55:33.736250808Z"
+    dependencies:
+    - condition: mysql.enabled
+      name: mysql
+      repository: https://charts.bitnami.com/bitnami
+      version: 9.12.5
+    - condition: redis.enabled
+      name: redis
+      repository: https://charts.bitnami.com/bitnami
+      version: 18.1.6
+    description: A Helm chart that deploys FleetDM with MySQL and Redis
+    digest: e5074b05b34ffe7e34f67f5b9012cda1f9997b0ce75a6bc7db03eb9edddceba4
+    name: fleetdm
+    type: application
+    urls:
+    - https://github.com/bborysenko/flamingo/releases/download/fleetdm-0.1.0/fleetdm-0.1.0.tgz
+    version: 0.1.0
+generated: "2026-02-19T23:55:33.736263712Z"

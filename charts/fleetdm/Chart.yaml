@@ -2,7 +2,7 @@ apiVersion: v2
 name: fleetdm
 description: A Helm chart that deploys FleetDM with MySQL and Redis
 type: application
-version: 0.0.0
+version: 0.1.0
 appVersion: "v4.80.1"
 dependencies:
   - name: mysql

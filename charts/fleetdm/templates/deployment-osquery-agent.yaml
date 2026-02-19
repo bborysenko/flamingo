@@ -1,0 +1,65 @@
+{{- if .Values.osqueryAgent.enabled }}
+{{- $port := $.Values.fleet.listenPort | default 8080 }}
+{{- $fleetHost := printf "%s-service.%s.svc:%v" .Release.Name .Release.Namespace $port }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-osquery-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-osquery-agent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.osqueryAgent.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Release.Name }}-osquery-agent
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Release.Name }}-osquery-agent
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: osquery
+          image: "{{ .Values.osqueryAgent.image.repository }}:{{ .Values.osqueryAgent.image.tag }}"
+          command: ["/opt/osquery/bin/osqueryd"]
+          args:
+            - --enroll_secret_path=/etc/osquery/secret/enroll_secret
+            - --tls_hostname={{ $fleetHost }}
+            - --enroll_tls_endpoint=/api/v1/osquery/enroll
+            - --config_plugin=tls
+            - --config_tls_endpoint=/api/v1/osquery/config
+            - --config_refresh=10
+            - --disable_distributed=false
+            - --distributed_plugin=tls
+            - --distributed_interval=10
+            - --distributed_tls_read_endpoint=/api/v1/osquery/distributed/read
+            - --distributed_tls_write_endpoint=/api/v1/osquery/distributed/write
+            - --logger_plugin=tls
+            - --logger_tls_endpoint=/api/v1/osquery/log
+            - --logger_tls_period=10
+            - --disable_enrollment=false
+            - --tls_server_certs=/etc/osquery/tls/server.cert
+          volumeMounts:
+            - name: enroll-secret
+              mountPath: /etc/osquery/secret
+              readOnly: true
+            - name: fleet-tls
+              mountPath: /etc/osquery/tls
+              readOnly: true
+      volumes:
+        - name: enroll-secret
+          secret:
+            secretName: {{ .Release.Name }}-enroll-secret
+            items:
+              - key: enroll_secret
+                path: enroll_secret
+        - name: fleet-tls
+          secret:
+            secretName: {{ .Release.Name }}-tls
+            items:
+              - key: server.cert
+                path: server.cert
+{{- end }}

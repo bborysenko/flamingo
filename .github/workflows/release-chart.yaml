@@ -1,0 +1,42 @@
+name: Release Helm Chart
+
+on:
+  push:
+    branches: [main]
+    paths: [charts/**, .github/workflows/release-chart.yaml]
+  pull_request:
+    paths: [charts/**, .github/workflows/release-chart.yaml]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm repo add bitnami https://charts.bitnami.com/bitnami
+      - run: helm dependency update charts/fleetdm
+      - run: helm lint charts/fleetdm
+      - uses: bmuschko/setup-kubeconform@v1
+        with:
+          kubeconform-version: '0.7.0'
+      - run: helm template fleetdm charts/fleetdm | kubeconform -strict -summary
+
+  release:
+    if: github.event_name == 'push'
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+      - uses: azure/setup-helm@v4
+      - run: helm repo add bitnami https://charts.bitnami.com/bitnami
+      - run: helm dependency update charts/fleetdm
+      - uses: helm/chart-releaser-action@v1.7.0
+        env:
+          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"

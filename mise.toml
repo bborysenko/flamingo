@@ -1,0 +1,4 @@
+[tools]
+helm = "3.19.2"
+kubectl = "1.35.1"
+kind = "0.31.0"

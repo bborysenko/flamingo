@@ -1,0 +1,2 @@
+# Helm downloaded dependency tarballs (rebuilt via `helm dependency build`)
+charts/*/charts/

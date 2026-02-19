@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  annotations:
+    "helm.sh/hook": pre-install
+    "helm.sh/hook-delete-policy": before-hook-creation
+    "helm.sh/hook-weight": "-1"
+  labels:
+    app: fleet
+    chart: fleet
+    heritage: {{ .Release.Service }}
+    release: {{ .Release.Name }}
+  name: fleet
+  namespace: {{ .Release.Namespace }}

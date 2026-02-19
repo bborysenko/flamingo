@@ -1,0 +1,15 @@
+apiVersion: v2
+name: fleetdm
+description: A Helm chart that deploys FleetDM with MySQL and Redis
+type: application
+version: 0.0.0
+appVersion: "v4.80.1"
+dependencies:
+  - name: mysql
+    version: "9.12.5"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: mysql.enabled
+  - name: redis
+    version: "18.1.6"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled

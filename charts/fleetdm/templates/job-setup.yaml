@@ -1,0 +1,115 @@
+{{- if .Values.setup.enabled }}
+{{- $port := .Values.fleet.listenPort | default 8080 }}
+{{- $fleetURL := printf "https://%s-service.%s.svc:%v" .Release.Name .Release.Namespace $port }}
+{{- $payload := dict
+  "admin" (dict "admin" true "email" .Values.setup.admin.email "name" .Values.setup.admin.name "password" .Values.setup.admin.password)
+  "org_info" (dict "org_name" .Values.setup.orgName)
+  "server_url" .Values.setup.serverURL
+}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-setup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-setup
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  annotations:
+    "helm.sh/hook": post-install
+    "helm.sh/hook-weight": "10"
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  ttlSecondsAfterFinished: 120
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Release.Name }}-setup
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      serviceAccountName: {{ .Release.Name }}-setup
+      restartPolicy: OnFailure
+      containers:
+        - name: fleet-setup
+          image: curlimages/curl:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              echo "Waiting for Fleet to be ready..."
+              until curl -sfk {{ $fleetURL }}/healthz; do
+                echo "Fleet not ready yet, retrying in 5s..."
+                sleep 5
+              done
+              echo ""
+              echo "Fleet is ready. Running initial setup..."
+              SETUP_RESP=""
+              for i in $(seq 1 30); do
+                SETUP_RESP=$(curl -sk -X POST \
+                  {{ $fleetURL }}/api/v1/setup \
+                  -H 'Content-Type: application/json' \
+                  -d {{ $payload | toJson | squote }})
+                echo "Setup response: $SETUP_RESP"
+                TOKEN=$(echo "$SETUP_RESP" | sed -n 's/.*"token": *"\([^"]*\)".*/\1/p')
+                if [ -n "$TOKEN" ]; then
+                  break
+                fi
+                echo "Setup not ready yet (attempt $i/30), retrying in 5s..."
+                sleep 5
+              done
+              if [ -z "$TOKEN" ]; then
+                echo "ERROR: Failed to extract API token after 30 attempts"
+                exit 1
+              fi
+              echo "Got API token."
+
+              # Generate a random enroll secret and register it with Fleet
+              ENROLL_SECRET=$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 32)
+              echo "Generated enroll secret."
+              ENROLL_APPLY_RESP=$(curl -sk -X POST \
+                {{ $fleetURL }}/api/v1/fleet/spec/enroll_secret \
+                -H "Authorization: Bearer $TOKEN" \
+                -H 'Content-Type: application/json' \
+                -d "{\"spec\":{\"secrets\":[{\"secret\":\"$ENROLL_SECRET\"}]}}")
+              echo "Enroll apply response: $ENROLL_APPLY_RESP"
+
+              # Create a Kubernetes Secret with the enroll secret
+              KUBE_API="https://kubernetes.default.svc"
+              SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              CA_CERT="/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+              NAMESPACE="{{ .Release.Namespace }}"
+              SECRET_NAME="{{ .Release.Name }}-enroll-secret"
+
+              SECRET_PAYLOAD="{\"apiVersion\":\"v1\",\"kind\":\"Secret\",\"metadata\":{\"name\":\"$SECRET_NAME\",\"namespace\":\"$NAMESPACE\"},\"stringData\":{\"enroll_secret\":\"$ENROLL_SECRET\"}}"
+
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                --cacert "$CA_CERT" \
+                -H "Authorization: Bearer $SA_TOKEN" \
+                -H "Content-Type: application/json" \
+                -X POST \
+                "$KUBE_API/api/v1/namespaces/$NAMESPACE/secrets" \
+                -d "$SECRET_PAYLOAD")
+
+              if [ "$HTTP_CODE" = "201" ]; then
+                echo "Created Kubernetes secret '$SECRET_NAME'."
+              elif [ "$HTTP_CODE" = "409" ]; then
+                echo "Secret '$SECRET_NAME' already exists, updating..."
+                HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+                  --cacert "$CA_CERT" \
+                  -H "Authorization: Bearer $SA_TOKEN" \
+                  -H "Content-Type: application/json" \
+                  -X PUT \
+                  "$KUBE_API/api/v1/namespaces/$NAMESPACE/secrets/$SECRET_NAME" \
+                  -d "$SECRET_PAYLOAD")
+                if [ "$HTTP_CODE" = "200" ]; then
+                  echo "Updated Kubernetes secret '$SECRET_NAME'."
+                else
+                  echo "ERROR: Failed to update secret (HTTP $HTTP_CODE)"
+                  exit 1
+                fi
+              else
+                echo "ERROR: Failed to create secret (HTTP $HTTP_CODE)"
+                exit 1
+              fi
+
+              echo "Setup complete!"
+{{- end }}

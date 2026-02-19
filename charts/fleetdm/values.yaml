@@ -1,0 +1,121 @@
+# Automated initial setup for FleetDM
+setup:
+  enabled: true
+  admin:
+    email: admin@example.com
+    name: Admin
+    password: admin123#pass
+  orgName: FleetDM
+  serverURL: https://localhost:8080
+
+# Deploy a single replica for local development
+replicas: 1
+imageRepository: fleetdm/fleet
+imageTag: v4.80.1
+
+# Expose Fleet via NodePort so Kind extraPortMappings can reach it
+gke:
+  ingress:
+    useGKEIngress: true
+    nodePort: 30080
+
+# Fleet server configuration
+fleet:
+  listenPort: 8080
+  autoApplySQLMigrations: true
+  tls:
+    enabled: true
+    uniqueTLSSecret: true
+    secretName: fleetdm-tls
+    compatibility: modern
+    certSecretKey: server.cert
+    keySecretKey: server.key
+  auth:
+    bcryptCost: 12
+    saltKeySize: 24
+  app:
+    tokenKeySize: 24
+    inviteTokenValidityPeriod: 120h
+  session:
+    keySize: 64
+    duration: 2160h
+  logging:
+    debug: false
+    json: false
+    disableBanner: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 3333
+    runAsGroup: 3333
+
+# osquery logging
+osquery:
+  nodeKeySize: 24
+  labelUpdateInterval: 30m
+  detailUpdateInterval: 30m
+  logging:
+    statusPlugin: filesystem
+    resultPlugin: filesystem
+    filesystem:
+      statusLogFile: osquery_status
+      resultLogFile: osquery_result
+      enableRotation: false
+      enableCompression: false
+      volumeSize: 20Gi
+
+# MySQL connection
+database:
+  secretName: fleetdm-mysql
+  address: fleetdm-mysql:3306
+  database: fleet
+  username: fleet
+  passwordKey: mysql-password
+  maxOpenConns: 50
+  maxIdleConns: 50
+  connMaxLifetime: 0
+  tls:
+    enabled: false
+    config: ""
+    serverName: ""
+
+# Redis connection
+cache:
+  address: fleetdm-redis-master:6379
+  database: "0"
+  usePassword: false
+
+# Resource limits for local dev
+resources:
+  limits:
+    cpu: 1
+    memory: 4Gi
+  requests:
+    cpu: 0.1
+    memory: 50Mi
+
+# MySQL subchart (Bitnami)
+mysql:
+  enabled: true
+  auth:
+    username: fleet
+    password: fleet
+    database: fleet
+  image:
+    repository: bitnamilegacy/mysql
+
+# Redis subchart (Bitnami)
+redis:
+  enabled: true
+  image:
+    repository: bitnamilegacy/redis
+  architecture: standalone
+  auth:
+    enabled: false
+
+# osquery agent that auto-enrolls into Fleet
+osqueryAgent:
+  enabled: true
+  replicas: 1
+  image:
+    repository: osquery/osquery
+    tag: 5.17.0-ubuntu24.04
